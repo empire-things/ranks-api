@@ -1,138 +1,205 @@
-const express = require('express');
-const WebSocket = require('ws');
-const { XMLParser } = require('fast-xml-parser');
-require('dotenv').config();
+const express = require("express");
+const WebSocket = require("ws");
+const { XMLParser } = require("fast-xml-parser");
+require("dotenv").config();
 
-const NOM_UTILISATEUR = process.env.NOM_UTILISATEUR;
-const MOT_DE_PASSE = process.env.MOT_DE_PASSE;
-const PORT = process.env.PORT ?? 3000;
-let servers = {};
+const username = process.env.USERNAME;
+const password = process.env.PASSWORD;
+const accountId = process.env.ACCOUNT_ID;
+const originUrl = process.env.ORIGIN_URL;
+const port = process.env.PORT;
 
+if (!username || !password || !port) {
+    throw new Error("Missing environment variables");
+}
 
-async function get_sockets() {
-    let servers_file = await fetch("https://empire-html5.goodgamestudios.com/config/network/1.xml");
-    servers_file = new XMLParser().parse(await servers_file.text());
-    for (instance of servers_file.network.instances.instance) {
-        if (instance.zone != "EmpireEx_23" && !(instance.zone in servers)) {
-            servers[instance.zone] = {url: `wss://${instance.server}`, reconnect: true, messages: [], responses: []};
+const servers = {};
+getServers();
+setTimeout(getServers, 3600000);
+
+async function getServers() {
+    const serversUrl = "https://empire-html5.goodgamestudios.com/config/network/1.xml";
+    const serversFile = new XMLParser().parse(await fetch(serversUrl).then((res) => res.text()));
+
+    for (instance of serversFile.network.instances.instance) {
+        if (instance.zone !== "EmpireEx_23" && !(instance.zone in servers)) {
+            servers[instance.zone] = {
+                url: `wss://${instance.server}`,
+                socket: new WebSocket(`wss://${instance.server}`),
+                reconnect: true,
+                message: {},
+                response: "",
+            };
+
             connect(instance.zone);
         }
     }
-    setTimeout(get_sockets, 3600000);
 }
 
-get_sockets();
-
 function connect(header) {
-    let socket = servers[header].socket = new WebSocket(servers[header].url);
-    socket.addEventListener('open', (event) => {
-        console.log(`### socket ${header} connected ###`)
-        socket.send(`<msg t='sys'><body action='login' r='0'><login z='${header}'><nick><![CDATA[]]></nick><pword><![CDATA[1065004%fr%0]]></pword></login></body></msg>`);
-        socket.send(`%xt%${header}%lli%1%{"CONM":175,"RTM":24,"ID":0,"PL":1,"NOM":"${NOM_UTILISATEUR}","PW":"${MOT_DE_PASSE}","LT":null,"LANG":"fr","DID":"0","AID":"1674256959939529708","KID":"","REF":"https://empire.goodgamestudios.com","GCI":"","SID":9,"PLFID":1}%`);
+    const socket = servers[header].socket;
+
+    socket.addEventListener("open", (event) => {
+        socket.send(
+            `<msg t='sys'><body action='login' r='0'><login z='${header}'><nick><![CDATA[]]></nick><pword><![CDATA[1089002%en%0]]></pword></login></body></msg>`
+        );
+
+        socket.send(
+            `%xt%${header}%lli%1%{"CONM":139,"RTM":24,"ID":0,"PL":1,"NOM":"FrostyBoy","PW":"DKTP5500!!5","LT":null,"LANG":"en","DID":"0","AID":"1698591511447444964","KID":"","REF":"https://empire.goodgamestudios.com","GCI":"","SID":9,"PLFID":1}%`
+        );
     });
 
-    socket.addEventListener('message', (event) => {
-        let response = event.data.toString().split("%");
-        response = {server: header, command: response[2], return_code: response[4], content: response[5]};
-        try {
-            response.content = JSON.parse(response.content ?? "{}");
-        }
-        catch {}
-        if (response.command == "lli") {
-            if (response.return_code == "0") {
-                ping_socket(socket);
-            }
-            else if (response.return_code == "21") {
-                socket.send(`%xt%${header}%lre%1%{"DID":0,"CONM":515,"RTM":60,"campainPId":-1,"campainCr":-1,"campainLP":-1,"adID":-1,"timeZone":14,"username":"${NOM_UTILISATEUR}","email":null,"password":"${MOT_DE_PASSE}","accountId":"1681390746855129824","ggsLanguageCode":"fr","referrer":"https://empire.goodgamestudios.com","distributorId":0,"connectionTime":515,"roundTripTime":60,"campaignVars":";https://empire.goodgamestudios.com;;;;;;-1;-1;;1681390746855129824;0;;;;;","campaignVars_adid":"-1","campaignVars_lp":"-1","campaignVars_creative":"-1","campaignVars_partnerId":"-1","campaignVars_websiteId":"0","timezone":14,"PN":"${NOM_UTILISATEUR}","PW":"${MOT_DE_PASSE}","REF":"https://empire.goodgamestudios.com","LANG":"fr","AID":"1681390746855129824","GCI":"","SID":9,"PLFID":1,"NID":1,"IC":""}%`);
-            }
-            else {
+    socket.addEventListener("message", (event) => {
+        const eventData = event.data.toString().split("%");
+
+        const response = {
+            server: header,
+            command: eventData[2],
+            code: eventData[4],
+            content: JSON.parse(JSON.stringify(eventData[5])),
+        };
+
+        if (response.command === "lli") {
+            if (response.code === "0") {
+                pingSocket(socket, header);
+            } else if (response.code === "21") {
+                socket.send(
+                    `%xt%${header}%lre%1%{"DID":0,"CONM":515,"RTM":60,"campainPId":-1,"campainCr":-1,"campainLP":-1,"adID":-1,"timeZone":14,"username":"${username}","email":null,"password":"${password}","accountId":"${accountId}","ggsLanguageCode":"en","referrer":"https://empire.goodgamestudios.com","distributorId":0,"connectionTime":515,"roundTripTime":60,"campaignVars":";https://empire.goodgamestudios.com;;;;;;-1;-1;;1681390746855129824;0;;;;;","campaignVars_adid":"-1","campaignVars_lp":"-1","campaignVars_creative":"-1","campaignVars_partnerId":"-1","campaignVars_websiteId":"0","timezone":14,"PN":"${username}","PW":"${password}","REF":"https://empire.goodgamestudios.com","LANG":"fr","AID":"1681390746855129824","GCI":"","SID":9,"PLFID":1,"NID":1,"IC":""}%`
+                );
+            } else {
                 socket.close();
             }
-        }
-        else if (response.command == "lre") {
-            if (response.return_code == "0") {
-                ping_socket(socket);
-            }
-            else {
+        } else if (response.command === "lre") {
+            if (response.code === "0") {
+                pingSocket(socket, header);
+            } else {
                 servers[header].reconnect = false;
                 socket.close();
             }
-        }
-        else {
-            if (servers[header].messages.some(message => message.command == response.command && Object.keys(message.headers).every(key => message.headers[key] == response.content[key]))) {
-                servers[header].responses.push(response);
-            }    
+        } else if (response.command === "hgh") {
+            let content;
+
+            try {
+                content = JSON.parse(response.content);
+            } catch {
+                content = response.content;
+            }
+
+            servers[header].response = {
+                ...response,
+                content: content,
+            };
         }
     });
 
-    socket.addEventListener('error', (event) => {
-        console.log(`### error in socket ${header} ###`);
-        console.log(event.message);
+    socket.addEventListener("error", (event) => {
+        console.log(`Error in socket ${header}:\n${event.message}`);
+
         if (["ENOTFOUND", "ETIMEDOUT"].includes(event.error.code)) {
             servers[header].reconnect = false;
         }
+
         socket.close();
     });
 
-    socket.addEventListener('close', (event) => {
-        console.log(`### socket ${header} closed ${servers[header].reconnect ? "" : "permanently "}###`);
+    socket.addEventListener("close", (event) => {
         if (servers[header].reconnect) {
             setTimeout(() => connect(header), 10000);
-        }
-        else {
+        } else {
+            console.log(`Socket ${header} closed permanently.`);
             delete servers[header];
         }
     });
 }
 
-function ping_socket(socket) {
+function pingSocket(socket, header) {
     if (socket.readyState != WebSocket.CLOSED && socket.readyState != WebSocket.CLOSING) {
-        socket.send("%xt%EmpireEx_3%pin%1%<RoundHouseKick>%");
-        setTimeout(() => ping_socket(socket), 60000);
+        console.log(`Pinging socket ${header}`);
+        socket.send(`%xt%${header}%pin%1%<RoundHouseKick>%`);
+        setTimeout(() => pingSocket(socket, header), 60000);
     }
 }
 
 const app = express();
-app.use(function (req, res, next) {
-    res.setHeader('Access-Control-Allow-Origin', 'https://danadum.github.io');
-    res.setHeader('Access-Control-Allow-Methods', 'GET');
-    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
+
+app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", originUrl);
+    res.setHeader("Access-Control-Allow-Methods", "GET");
+    res.setHeader("Access-Control-Allow-Headers", "X-Requested-With,content-type");
     next();
 });
 
 app.get("/:server/:command/:headers", async (req, res) => {
-    if (req.params.server in servers) {
+    const { server, command, headers } = req.params;
+
+    if (server in servers) {
         try {
-            let JSONheaders = JSON.parse(`{${req.params.headers}}`);
-            servers[req.params.server].socket.send(`%xt%${req.params.server}%${req.params.command}%1%{${req.params.headers}}%`);
-            servers[req.params.server].messages.push({server: req.params.server, command: req.params.command, headers: JSONheaders});
-            res.json(await get_socket_response({server: req.params.server, command: req.params.command, headers: JSONheaders}, 0));    
+            servers[server].socket.send(`%xt%${server}%${command}%1%{${headers}}%`);
+
+            servers[server].message = {
+                server: server,
+                command: command,
+                headers: JSON.parse(`{${headers}}`),
+            };
+
+            const response = await getSocketResponse(
+                {
+                    server: server,
+                    command: command,
+                    headers: JSON.parse(`{${headers}}`),
+                },
+                0
+            );
+
+            if (response.content.error) {
+                res.status(500);
+            } else {
+                res.status(200);
+            }
+
+            res.json(response || {});
+        } catch {
+            res.status(500);
+            res.json({
+                code: "-1",
+                server: server,
+                command: command,
+                content: { error: "Cannot send message" },
+            });
         }
-        catch {
-            res.json({server: req.params.server, command: req.params.command, return_code: "-1", content: {"error": "Bad request"}});    
-        }
-    }
-    else {
-        res.json({server: req.params.server, command: req.params.command, return_code: "-1", content: {"error": "This server is currently not supported"}});    
+    } else {
+        res.status(404);
+        res.json({
+            code: "-1",
+            server: server,
+            command: command,
+            content: { error: "Cannot find server" },
+        });
     }
 });
 
-app.listen(PORT, () => console.log(`Express Server listening on port ${PORT}`));
+app.listen(port, () => {
+    console.log(`Express Server listening on port ${port}`);
+});
 
-async function get_socket_response(message, nb_try) {
-    if (nb_try < 20) {
-        let response = servers[message.server].responses.find(response => message.command == response.command && Object.keys(message.headers).every(key => message.headers[key] == response.content[key]));
-        if (response != undefined) {
-            servers[response.server].responses.splice(servers[response.server].responses.indexOf(response), 1);
-            servers[message.server].messages.splice(servers[message.server].messages.indexOf(message), 1);
-            return response;    
+async function getSocketResponse(message, tries) {
+    if (tries < 20) {
+        const response = servers[message.server].response;
+
+        if (response) {
+            servers[message.server].response = "";
+            return response;
+        } else {
+            return await new Promise((resolve) =>
+                setTimeout(() => resolve(getSocketResponse(message, tries + 1)), 50)
+            );
         }
-        else {
-            return await new Promise(resolve => setTimeout(() => resolve(get_socket_response(message, nb_try + 1)), 50))
-        }
-    }
-    else {
-        servers[message.server].messages.splice(servers[message.server].messages.indexOf(message), 1);
-        return {server: message.server, command: message.command, return_code: "-1", content: {}};
+    } else {
+        return {
+            code: "-1",
+            server: message.server,
+            command: message.command,
+            content: { error: "Cannot get response" },
+        };
     }
 }
